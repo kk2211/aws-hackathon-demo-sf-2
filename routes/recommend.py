@@ -23,7 +23,6 @@ def recommend():
         span.set_tag("llm.model", LLM_MODEL)
         span.set_tag("llm.temperature_requested", temperature)
 
-        # BUG: gpt-50-mini ignores temperature → high variance output
         result = complete(model=LLM_MODEL, prompt=prompt, temperature=temperature)
 
         span.set_tag("llm.response_text", result["choices"][0]["text"])
