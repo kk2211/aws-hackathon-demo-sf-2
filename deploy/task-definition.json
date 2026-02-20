@@ -1,0 +1,102 @@
+{
+  "family": "acme-order-service",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "${EXECUTION_ROLE_ARN}",
+  "taskRoleArn": "${TASK_ROLE_ARN}",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "${DOCKER_IMAGE}",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 5000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "DD_AGENT_HOST", "value": "localhost" },
+        { "name": "DD_TRACE_AGENT_PORT", "value": "8126" },
+        { "name": "DD_SERVICE", "value": "acme-order-service" },
+        { "name": "DD_ENV", "value": "demo" },
+        { "name": "DD_VERSION", "value": "1.0.0" },
+        { "name": "REDIS_HOST", "value": "${REDIS_HOST}" },
+        { "name": "REDIS_PORT", "value": "6379" },
+        { "name": "FRAUD_API_URL", "value": "http://localhost:5000/_mock/fraud" },
+        { "name": "EMAIL_API_URL", "value": "http://localhost:5000/_mock/email" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/acme-order-service",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "app"
+        }
+      },
+      "dependsOn": [
+        {
+          "containerName": "datadog-agent",
+          "condition": "START"
+        },
+        {
+          "containerName": "redis",
+          "condition": "START"
+        }
+      ]
+    },
+    {
+      "name": "datadog-agent",
+      "image": "public.ecr.aws/datadog/agent:7",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8126,
+          "protocol": "tcp"
+        },
+        {
+          "containerPort": 8125,
+          "protocol": "udp"
+        }
+      ],
+      "environment": [
+        { "name": "DD_APM_ENABLED", "value": "true" },
+        { "name": "DD_LOGS_ENABLED", "value": "true" },
+        { "name": "DD_APM_NON_LOCAL_TRAFFIC", "value": "true" },
+        { "name": "DD_DOGSTATSD_NON_LOCAL_TRAFFIC", "value": "true" },
+        { "name": "ECS_FARGATE", "value": "true" },
+        { "name": "DD_SITE", "value": "datadoghq.com" },
+        { "name": "DD_API_KEY", "value": "${DD_API_KEY}" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/acme-order-service",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "datadog"
+        }
+      }
+    },
+    {
+      "name": "redis",
+      "image": "public.ecr.aws/docker/library/redis:7-alpine",
+      "essential": false,
+      "portMappings": [
+        {
+          "containerPort": 6379,
+          "protocol": "tcp"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/acme-order-service",
+          "awslogs-region": "${AWS_REGION}",
+          "awslogs-stream-prefix": "redis"
+        }
+      }
+    }
+  ]
+}
