@@ -53,11 +53,7 @@ bugfix_1() {
   sed -i '' 's/LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-50-mini")/LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-50")/' config.py
 
   # Clean up BUG comment in recommend.py
-  sed -i '' 's/        # BUG: gpt-50-mini ignores temperature .*/        result = complete(model=LLM_MODEL, prompt=prompt, temperature=temperature)/' routes/recommend.py
-  sed -i '' '/^        result = complete(model=LLM_MODEL, prompt=prompt, temperature=temperature)$/{
-    N
-    /result = complete.*\n.*result = complete/d
-  }' routes/recommend.py
+  sed -i '' '/# BUG: gpt-50-mini ignores temperature/d' routes/recommend.py
 
   git add config.py routes/recommend.py
   git commit -m "fix: switch LLM model from gpt-50-mini to gpt-50
