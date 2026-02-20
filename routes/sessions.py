@@ -16,9 +16,10 @@ _redis = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True
 
 @bp.route("/sessions", methods=["GET"])
 def list_sessions():
-    with tracer.trace("redis.keys", service="acme-order-service", resource="sessions") as span:
-        keys = _redis.keys("session:*")
-        span.set_tag("redis.command", "KEYS session:*")
+    with tracer.trace("redis.scan", service="acme-order-service", resource="sessions") as span:
+        # Use SCAN instead of KEYS — non-blocking, cursor-based iteration
+        keys = list(_redis.scan_iter("session:*", count=100))
+        span.set_tag("redis.command", "SCAN session:*")
         span.set_tag("redis.key_count", len(keys))
 
     sessions = []
