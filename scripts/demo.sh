@@ -510,15 +510,15 @@ do_reset() {
     fi
   done
 
-  # Revert merged bugfix PRs on main (only bugfix branches, not repeat branches)
+  # Revert all merged demo PRs on main (bugfix + repeat branches)
   git checkout main 2>/dev/null || true
   git pull origin main --quiet 2>/dev/null || true
 
-  for branch in "${BUGFIX_BRANCHES[@]:1}"; do
+  for branch in "${ALL_BRANCHES[@]}"; do
     merge_sha=$(gh pr list --repo "$REPO" --head "$branch" --state merged \
       --json mergeCommit --jq '.[0].mergeCommit.oid' 2>/dev/null || echo "")
     if [[ -n "$merge_sha" && "$merge_sha" != "null" ]]; then
-      git revert "$merge_sha" --no-edit 2>/dev/null && ok "Reverted merged bugfix: $branch ($merge_sha)" || true
+      git revert "$merge_sha" --no-edit 2>/dev/null && ok "Reverted merged PR: $branch ($merge_sha)" || true
     fi
   done
 
