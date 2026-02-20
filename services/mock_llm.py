@@ -1,6 +1,6 @@
 """Mock OpenAI-style LLM service.
 
-Simulates completion calls for supported models (gpt-50, gpt-50-mini).
+Simulates completion calls for supported models (gpt-5, gpt-5-mini).
 """
 
 import random
@@ -17,7 +17,7 @@ SAMPLE_RECOMMENDATIONS = [
     "Our artisan chocolate gift box makes a great present.",
 ]
 
-SUPPORTED_MODELS = ["gpt-50", "gpt-50-mini"]
+SUPPORTED_MODELS = ["gpt-5", "gpt-5-mini"]
 
 
 def complete(model: str, prompt: str, temperature: float = 0.7) -> dict:

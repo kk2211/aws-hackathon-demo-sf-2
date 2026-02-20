@@ -39,10 +39,10 @@ The goal: introduce bugs via PRs → Datadog catches them → bugfix PRs get cre
 | | |
 |---|---|
 | **Endpoint** | `POST /recommend` |
-| **Bug** | Uses `gpt-50-mini` which silently ignores the `temperature` parameter → non-deterministic outputs |
+| **Bug** | Uses `gpt-5-mini` which silently ignores the `temperature` parameter → non-deterministic outputs |
 | **Datadog Signal** | Custom metric shows `temperature` param is set but response variance is high; trace metadata shows model mismatch |
-| **Fix** | Switch to `gpt-50` which supports temperature, or remove the temperature param |
-| **Pattern** | `openai.chat.completions.create` with `model=gpt-50-mini` and `temperature` parameter |
+| **Fix** | Switch to `gpt-5` which supports temperature, or remove the temperature param |
+| **Pattern** | `openai.chat.completions.create` with `model=gpt-5-mini` and `temperature` parameter |
 
 ### Bug 2 — Blocking Redis Command (`/sessions`)
 
@@ -117,7 +117,7 @@ All external services are **mocked in-process** so the demo runs anywhere with n
 
 | Mock | Simulates | Behavior |
 |------|-----------|----------|
-| `mock_llm.py` | OpenAI API | Returns random completions. `gpt-50-mini` ignores temp param. `gpt-50` respects it. |
+| `mock_llm.py` | OpenAI API | Returns random completions. `gpt-5-mini` ignores temp param. `gpt-5` respects it. |
 | `mock_fraud.py` | External fraud API | Normally returns in 200ms. Can be toggled to hang for 60s (simulates outage). |
 | `mock_email.py` | Email/notification service | Fails 80% of the time (simulates flaky service) to trigger retry storms. |
 
@@ -198,7 +198,7 @@ python load_test.py --all --rps 5 --duration 120
 
 These get stored in Mem0 before the demo so the PR review agent has history to reference:
 
-1. **gpt-50-mini temperature bug** → PR #287 in `acme/recommendations`
+1. **gpt-5-mini temperature bug** → PR #287 in `acme/recommendations`
 2. **redis.keys() site outage** → PR #156 in `acme/sessions`
 3. **requests.post without timeout** → PR #201 in `acme/payments`
 4. **SELECT without LIMIT** → PR #312 in `acme/catalog`

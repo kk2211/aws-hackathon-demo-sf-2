@@ -35,7 +35,7 @@ curl http://localhost:9000/health
 
 ### `POST /recommend` — Bug 1: Wrong LLM Model
 
-Uses `gpt-50-mini` which silently ignores the `temperature` parameter, producing non-deterministic outputs even when low temperature is requested.
+Uses `gpt-5-mini` which silently ignores the `temperature` parameter, producing non-deterministic outputs even when low temperature is requested.
 
 ```bash
 curl -X POST http://localhost:9000/recommend \
@@ -43,9 +43,9 @@ curl -X POST http://localhost:9000/recommend \
   -d '{"prompt": "Suggest a product", "temperature": 0.2}'
 ```
 
-**Bug:** Response varies randomly despite `temperature: 0.2`. The `gpt-50` model would respect it.
+**Bug:** Response varies randomly despite `temperature: 0.2`. The `gpt-5` model would respect it.
 
-**Datadog signal:** Trace metadata shows `llm.model=gpt-50-mini` with `llm.temperature_requested=0.2`, but response text varies across requests.
+**Datadog signal:** Trace metadata shows `llm.model=gpt-5-mini` with `llm.temperature_requested=0.2`, but response text varies across requests.
 
 ### `GET /sessions` — Bug 2: Blocking Redis Command
 
@@ -128,7 +128,7 @@ Go to **APM → Traces** in the Datadog UI.
 
 | Endpoint | Trace pattern |
 |----------|--------------|
-| `/recommend` | Short trace with `llm.complete` span. Check `llm.model` tag — it's `gpt-50-mini` |
+| `/recommend` | Short trace with `llm.complete` span. Check `llm.model` tag — it's `gpt-5-mini` |
 | `/sessions` | `redis.keys` span dominates the trace. Duration grows with key count |
 | `/checkout` | `http.fraud_check` span. Normal: ~200ms. With hang: 30s+ |
 | `/search` | `sqlite.query` span. Check `search.result_count` for unbounded results |
@@ -178,7 +178,7 @@ Go to **Logs → Search**.
 ├── wsgi.py                 # WSGI entry point for gunicorn
 ├── config.py               # Environment-based configuration
 ├── routes/
-│   ├── recommend.py        # Bug 1: gpt-50-mini ignores temperature
+│   ├── recommend.py        # Bug 1: gpt-5-mini ignores temperature
 │   ├── sessions.py         # Bug 2: redis.keys() blocks Redis
 │   ├── checkout.py         # Bug 3: requests.post() without timeout
 │   ├── search.py           # Bug 4: SELECT * without LIMIT

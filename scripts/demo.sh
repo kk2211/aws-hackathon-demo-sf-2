@@ -9,7 +9,7 @@
 #   ./scripts/demo.sh list         # Show available examples
 #
 # Examples:
-#   1  LLM model gotcha    (gpt-50-mini ignores temperature)
+#   1  LLM model gotcha    (gpt-5-mini ignores temperature)
 #   2  Redis KEYS blocking  (redis.keys() is O(N) and blocks server)
 #   3  HTTP call no timeout (requests.post() without timeout)
 
@@ -43,21 +43,21 @@ create_branch_from_main() {
 # ─── Bugfix PRs ──────────────────────────────────────────────────────────────
 
 bugfix_1() {
-  # Example 1: Fix gpt-50-mini → gpt-50
+  # Example 1: Fix gpt-5-mini → gpt-5
   local branch="${BUGFIX_BRANCHES[1]}"
   info "Creating bugfix PR: LLM model temperature fix..."
 
   create_branch_from_main "$branch"
 
   # Fix config.py: change default model
-  sed -i '' 's/LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-50-mini")/LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-50")/' config.py
+  sed -i '' 's/LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-5-mini")/LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-5")/' config.py
 
   git add config.py
-  git commit -m "fix: switch LLM model from gpt-50-mini to gpt-50
+  git commit -m "fix: switch LLM model from gpt-5-mini to gpt-5
 
-gpt-50-mini silently ignores the temperature parameter, causing
+gpt-5-mini silently ignores the temperature parameter, causing
 non-deterministic outputs even when low temperature is requested.
-Switched to gpt-50 which respects temperature settings."
+Switched to gpt-5 which respects temperature settings."
 
   git push -u origin "$branch"
 
@@ -69,18 +69,18 @@ Switched to gpt-50 which respects temperature settings."
     --body "$(cat <<'EOF'
 ## Summary
 - `/recommend` endpoint returning different results on every call despite `temperature: 0.2`
-- Investigated via Datadog APM — traces showed `llm.model=gpt-50-mini` with `llm.temperature_requested=0.2`, but response text varied randomly across requests
-- Root cause: `gpt-50-mini` silently ignores the temperature parameter — all outputs are high-variance regardless of requested temperature
-- Fix: Switch default model to `gpt-50` which correctly respects the temperature setting
+- Investigated via Datadog APM — traces showed `llm.model=gpt-5-mini` with `llm.temperature_requested=0.2`, but response text varied randomly across requests
+- Root cause: `gpt-5-mini` silently ignores the temperature parameter — all outputs are high-variance regardless of requested temperature
+- Fix: Switch default model to `gpt-5` which correctly respects the temperature setting
 
 ## Datadog evidence
 - Service: `acme-order-service`, env: `demo`
 - APM Traces → filter by resource `/recommend`
-- Span tag `llm.model=gpt-50-mini` with varying `llm.response_text` despite constant `llm.temperature_requested=0.2`
+- Span tag `llm.model=gpt-5-mini` with varying `llm.response_text` despite constant `llm.temperature_requested=0.2`
 
 ## Test plan
 - [ ] Hit `/recommend` with `temperature: 0.1` multiple times — should now return consistent results
-- [ ] Verify Datadog traces show `llm.model=gpt-50`
+- [ ] Verify Datadog traces show `llm.model=gpt-5`
 EOF
 )"
 
@@ -216,9 +216,9 @@ EOF
 # ─── Repeat PRs (same mistake, different code) ───────────────────────────────
 
 repeat_1() {
-  # Example 1: New endpoint that hardcodes gpt-50-mini
+  # Example 1: New endpoint that hardcodes gpt-5-mini
   local branch="${REPEAT_BRANCHES[1]}"
-  info "Creating repeat PR: New /generate-description endpoint using gpt-50-mini..."
+  info "Creating repeat PR: New /generate-description endpoint using gpt-5-mini..."
 
   create_branch_from_main "$branch"
 
@@ -246,11 +246,11 @@ def generate_description():
     prompt = f"Write a {tone} marketing description for: {product}"
 
     with tracer.trace("llm.complete", service="acme-order-service", resource="generate_description") as span:
-        span.set_tag("llm.model", "gpt-50-mini")
+        span.set_tag("llm.model", "gpt-5-mini")
         span.set_tag("llm.prompt_length", len(prompt))
 
-        # Use gpt-50-mini for faster, cheaper completions
-        result = complete(model="gpt-50-mini", prompt=prompt, temperature=0.1)
+        # Use gpt-5-mini for faster, cheaper completions
+        result = complete(model="gpt-5-mini", prompt=prompt, temperature=0.1)
 
         span.set_tag("llm.response_length", len(result["choices"][0]["text"]))
 
@@ -544,7 +544,7 @@ list_examples() {
   echo ""
   echo "Available examples:"
   echo ""
-  echo "  1  LLM model gotcha     gpt-50-mini silently ignores temperature"
+  echo "  1  LLM model gotcha     gpt-5-mini silently ignores temperature"
   echo "  2  Redis KEYS blocking   redis.keys() is O(N), blocks server"
   echo "  3  HTTP call no timeout  requests.post() without timeout hangs"
   echo ""
