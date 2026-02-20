@@ -1,7 +1,6 @@
-"""Bug 1 — Wrong LLM Model (/recommend)
+"""Product recommendation endpoint (/recommend)
 
-Uses gpt-50-mini which silently ignores the temperature parameter,
-producing non-deterministic outputs even when low temperature is requested.
+Uses the configured LLM model to generate personalized product recommendations.
 """
 
 from flask import Blueprint, request, jsonify

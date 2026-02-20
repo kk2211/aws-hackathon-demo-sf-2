@@ -1,7 +1,6 @@
-"""Bug 5 — Retry Storm (/notify)
+"""Email notification endpoint (/notify)
 
-Retries up to 10 times with no backoff against a flaky email service,
-hammering the downstream and amplifying failures.
+Sends order confirmation emails with retry logic for reliability.
 """
 
 from flask import Blueprint, request, jsonify
@@ -11,7 +10,7 @@ from services.mock_email import send_email
 
 bp = Blueprint("notify", __name__)
 
-MAX_RETRIES = 10  # BUG: too many retries
+MAX_RETRIES = 10
 
 
 @bp.route("/notify", methods=["POST"])
@@ -29,7 +28,6 @@ def notify():
 
         for attempt in range(MAX_RETRIES):
             try:
-                # BUG: no backoff between retries — hammers the service
                 result = send_email(to=to, subject=subject, body=body)
                 span.set_tag("email.attempts", attempt + 1)
                 span.set_tag("email.status", "sent")

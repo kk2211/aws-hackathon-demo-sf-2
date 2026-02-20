@@ -1,7 +1,6 @@
-"""Bug 2 — Blocking Redis Command (/sessions)
+"""Active sessions endpoint (/sessions)
 
-Uses redis.keys("session:*") which is O(N) and blocks the
-single-threaded Redis server, causing latency spikes.
+Lists currently active user sessions stored in Redis.
 """
 
 from flask import Blueprint, jsonify
@@ -18,7 +17,6 @@ _redis = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True
 @bp.route("/sessions", methods=["GET"])
 def list_sessions():
     with tracer.trace("redis.keys", service="acme-order-service", resource="sessions") as span:
-        # BUG: redis.keys() is O(N), blocks Redis for the entire scan
         keys = _redis.keys("session:*")
         span.set_tag("redis.command", "KEYS session:*")
         span.set_tag("redis.key_count", len(keys))

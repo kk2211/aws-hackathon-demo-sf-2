@@ -1,7 +1,6 @@
-"""Bug 4 — Unbounded SQL Query (/search)
+"""Product search endpoint (/search)
 
-Uses SELECT * ... LIKE '%query%' without a LIMIT clause,
-scanning the entire products table on every request.
+Full-text search across the products catalog.
 """
 
 import sqlite3
@@ -30,7 +29,6 @@ def search():
         span.set_tag("search.query", q)
 
         db = _get_db()
-        # BUG: no LIMIT — scans entire table, returns unbounded results
         cursor = db.execute(
             "SELECT * FROM products WHERE name LIKE ?", (f"%{q}%",)
         )

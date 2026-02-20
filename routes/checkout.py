@@ -1,7 +1,6 @@
-"""Bug 3 — HTTP Call Without Timeout (/checkout)
+"""Order checkout endpoint (/checkout)
 
-Uses requests.post() to the fraud API without a timeout parameter.
-When the fraud API hangs, all workers block indefinitely.
+Validates orders against the fraud detection API before confirming.
 """
 
 from flask import Blueprint, request, jsonify
@@ -26,7 +25,6 @@ def checkout():
         span.set_tag("order.id", order["order_id"])
         span.set_tag("order.amount", order["amount"])
 
-        # BUG: no timeout — if fraud API hangs, this blocks forever
         resp = http_requests.post(FRAUD_API_URL, json=order)
         fraud_result = resp.json()
 

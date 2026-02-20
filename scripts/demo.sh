@@ -52,10 +52,7 @@ bugfix_1() {
   # Fix config.py: change default model
   sed -i '' 's/LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-50-mini")/LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-50")/' config.py
 
-  # Clean up BUG comment in recommend.py
-  sed -i '' '/# BUG: gpt-50-mini ignores temperature/d' routes/recommend.py
-
-  git add config.py routes/recommend.py
+  git add config.py
   git commit -m "fix: switch LLM model from gpt-50-mini to gpt-50
 
 gpt-50-mini silently ignores the temperature parameter, causing
@@ -100,9 +97,9 @@ bugfix_2() {
 
   # Rewrite sessions.py with the fix
   cat > routes/sessions.py <<'PYEOF'
-"""Sessions endpoint (/sessions)
+"""Active sessions endpoint (/sessions)
 
-Lists active sessions using Redis SCAN for non-blocking iteration.
+Lists currently active user sessions stored in Redis.
 """
 
 from flask import Blueprint, jsonify
@@ -179,8 +176,6 @@ bugfix_3() {
 
   # Fix checkout.py: add timeout
   sed -i '' 's|resp = http_requests.post(FRAUD_API_URL, json=order)$|resp = http_requests.post(FRAUD_API_URL, json=order, timeout=5)|' routes/checkout.py
-  # Remove BUG comment
-  sed -i '' '/# BUG: no timeout/d' routes/checkout.py
 
   git add routes/checkout.py
   git commit -m "fix: add 5s timeout to fraud API call in /checkout
