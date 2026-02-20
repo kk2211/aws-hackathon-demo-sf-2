@@ -513,7 +513,7 @@ do_reset() {
     merge_sha=$(gh pr list --repo "$REPO" --head "$branch" --state merged \
       --json mergeCommit --jq '.[0].mergeCommit.oid' 2>/dev/null || echo "")
     if [[ -n "$merge_sha" && "$merge_sha" != "null" ]]; then
-      git revert "$merge_sha" --no-edit 2>/dev/null && ok "Reverted merged PR: $branch ($merge_sha)" || true
+      git revert -m 1 "$merge_sha" --no-edit 2>/dev/null && ok "Reverted merged PR: $branch ($merge_sha)" || true
     fi
   done
 
