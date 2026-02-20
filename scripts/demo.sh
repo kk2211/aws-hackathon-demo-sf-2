@@ -510,18 +510,32 @@ do_reset() {
     fi
   done
 
+  # Revert merged bugfix PRs on main (only bugfix branches, not repeat branches)
+  git checkout main 2>/dev/null || true
+  git pull origin main --quiet 2>/dev/null || true
+
+  for branch in "${BUGFIX_BRANCHES[@]:1}"; do
+    merge_sha=$(gh pr list --repo "$REPO" --head "$branch" --state merged \
+      --json mergeCommit --jq '.[0].mergeCommit.oid' 2>/dev/null || echo "")
+    if [[ -n "$merge_sha" && "$merge_sha" != "null" ]]; then
+      git revert "$merge_sha" --no-edit 2>/dev/null && ok "Reverted merged bugfix: $branch ($merge_sha)" || true
+    fi
+  done
+
+  # Push reverts to main
+  git push origin main 2>/dev/null || true
+
   # Delete remote branches
   for branch in "${ALL_BRANCHES[@]}"; do
     git push origin --delete "$branch" 2>/dev/null && ok "Deleted remote: $branch" || true
   done
 
   # Delete local branches
-  git checkout main 2>/dev/null || true
   for branch in "${ALL_BRANCHES[@]}"; do
     git branch -D "$branch" 2>/dev/null && ok "Deleted local: $branch" || true
   done
 
-  # Reset main to origin
+  # Sync local main with origin
   git fetch origin main --quiet
   git reset --hard origin/main
 
