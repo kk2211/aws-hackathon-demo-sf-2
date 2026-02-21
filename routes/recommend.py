@@ -16,14 +16,16 @@ bp = Blueprint("recommend", __name__)
 def recommend():
     data = request.get_json(force=True)
     prompt = data.get("prompt", "Recommend a product for this customer.")
+    temperature = data.get("temperature", 0.2)
 
     with tracer.trace("llm.complete", service="acme-order-service", resource="recommend") as span:
         span.set_tag("llm.model", LLM_MODEL)
+        span.set_tag("llm.temperature_requested", temperature)
 
-        # gpt-5 does not support the temperature parameter — omit it
         resp = http_requests.post(LLM_API_URL, json={
             "model": LLM_MODEL,
             "prompt": prompt,
+            "temperature": temperature,
         })
 
         if resp.status_code != 200:
