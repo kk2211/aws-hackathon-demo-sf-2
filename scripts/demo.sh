@@ -9,17 +9,16 @@
 #   ./scripts/demo.sh list         # Show available examples
 #
 # Examples:
-#   1  LLM model gotcha    (gpt-5-mini ignores temperature)
-#   2  Redis KEYS blocking  (redis.keys() is O(N) and blocks server)
-#   3  HTTP call no timeout (requests.post() without timeout)
+#   1  GPT-5 temperature error   (gpt-5 doesn't support temperature parameter)
+#   2  HTTP call no timeout      (requests.post() without timeout)
 
 set -euo pipefail
 
 REPO="kk2211/aws-hackathon-demo-sf"
 
 # Branch names per example
-BUGFIX_BRANCHES=( "" "fix/llm-model-temperature" "fix/redis-keys-blocking" "fix/checkout-timeout" )
-REPEAT_BRANCHES=( "" "feat/generate-description" "feat/active-carts" "feat/refund-endpoint" )
+BUGFIX_BRANCHES=( "" "fix/llm-model-temperature" "fix/checkout-timeout" )
+REPEAT_BRANCHES=( "" "feat/generate-description" "feat/refund-endpoint" )
 
 ALL_BRANCHES=( "${BUGFIX_BRANCHES[@]:1}" "${REPEAT_BRANCHES[@]:1}" )
 
@@ -43,21 +42,58 @@ create_branch_from_main() {
 # ─── Bugfix PRs ──────────────────────────────────────────────────────────────
 
 bugfix_1() {
-  # Example 1: Fix gpt-5-mini → gpt-5
+  # Example 1: Fix gpt-5 temperature error — remove temperature from complete() call
   local branch="${BUGFIX_BRANCHES[1]}"
-  info "Creating bugfix PR: LLM model temperature fix..."
+  info "Creating bugfix PR: Remove temperature parameter for gpt-5..."
 
   create_branch_from_main "$branch"
 
-  # Fix config.py: change default model
-  sed -i '' 's/LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-5-mini")/LLM_MODEL = os.environ.get("LLM_MODEL", "gpt-5")/' config.py
+  # Fix recommend.py: remove temperature from the complete() call
+  cat > routes/recommend.py <<'PYEOF'
+"""Product recommendation endpoint (/recommend)
 
-  git add config.py
-  git commit -m "fix: switch LLM model from gpt-5-mini to gpt-5
+Uses the configured LLM model to generate personalized product recommendations.
+"""
 
-gpt-5-mini silently ignores the temperature parameter, causing
-non-deterministic outputs even when low temperature is requested.
-Switched to gpt-5 which respects temperature settings."
+from flask import Blueprint, request, jsonify
+from ddtrace import tracer
+
+from services.mock_llm import complete
+from config import LLM_MODEL
+
+bp = Blueprint("recommend", __name__)
+
+
+@bp.route("/recommend", methods=["POST"])
+def recommend():
+    data = request.get_json(force=True)
+    prompt = data.get("prompt", "Recommend a product for this customer.")
+
+    with tracer.trace("llm.complete", service="acme-order-service", resource="recommend") as span:
+        span.set_tag("llm.model", LLM_MODEL)
+
+        # gpt-5 does not support the temperature parameter — omit it
+        result = complete(model=LLM_MODEL, prompt=prompt)
+
+        span.set_tag("llm.response_text", result["choices"][0]["text"])
+
+    return jsonify(result)
+PYEOF
+
+  git add routes/recommend.py
+  git commit -m "$(cat <<'EOF'
+fix: remove temperature parameter from /recommend for gpt-5 compatibility
+
+gpt-5 does not support the temperature parameter — passing any value
+other than the default (1.0) causes a ValueError. After upgrading from
+gpt-4o to gpt-5, every /recommend call was failing with:
+
+  "'temperature' does not support 0.2 with model gpt-5"
+
+Removed the temperature parameter from the complete() call since
+gpt-5 only supports the default value.
+EOF
+)"
 
   git push -u origin "$branch"
 
@@ -65,22 +101,22 @@ Switched to gpt-5 which respects temperature settings."
     --repo "$REPO" \
     --base main \
     --head "$branch" \
-    --title "Fix non-deterministic LLM responses in /recommend" \
+    --title "Fix /recommend crash: gpt-5 does not support temperature parameter" \
     --body "$(cat <<'EOF'
 ## Summary
-- `/recommend` endpoint returning different results on every call despite `temperature: 0.2`
-- Investigated via Datadog APM — traces showed `llm.model=gpt-5-mini` with `llm.temperature_requested=0.2`, but response text varied randomly across requests
-- Root cause: `gpt-5-mini` silently ignores the temperature parameter — all outputs are high-variance regardless of requested temperature
-- Fix: Switch default model to `gpt-5` which correctly respects the temperature setting
+- After upgrading LLM from `gpt-4o` to `gpt-5`, every `/recommend` request started failing with a `ValueError`
+- Investigated via Datadog APM — error traces showed `ValueError: 'temperature' does not support 0.2 with model gpt-5. Only the default (1) value is supported.`
+- Root cause: GPT-5 models removed support for the `temperature` parameter. Our code was still passing `temperature=0.2`
+- Fix: Removed the temperature parameter from the `complete()` call
 
 ## Datadog evidence
 - Service: `acme-order-service`, env: `demo`
-- APM Traces → filter by resource `/recommend`
-- Span tag `llm.model=gpt-5-mini` with varying `llm.response_text` despite constant `llm.temperature_requested=0.2`
+- APM Traces → filter by resource `/recommend` → 100% error rate
+- Error: `ValueError: 'temperature' does not support 0.2 with model gpt-5`
 
 ## Test plan
-- [ ] Hit `/recommend` with `temperature: 0.1` multiple times — should now return consistent results
-- [ ] Verify Datadog traces show `llm.model=gpt-5`
+- [ ] Hit `/recommend` — should return recommendations without errors
+- [ ] Verify Datadog traces show successful `llm.complete` spans
 EOF
 )"
 
@@ -89,87 +125,8 @@ EOF
 }
 
 bugfix_2() {
-  # Example 2: Fix redis.keys() → scan_iter()
+  # Example 2: Fix missing timeout on requests.post()
   local branch="${BUGFIX_BRANCHES[2]}"
-  info "Creating bugfix PR: Redis KEYS → SCAN fix..."
-
-  create_branch_from_main "$branch"
-
-  # Rewrite sessions.py with the fix
-  cat > routes/sessions.py <<'PYEOF'
-"""Active sessions endpoint (/sessions)
-
-Lists currently active user sessions stored in Redis.
-"""
-
-from flask import Blueprint, jsonify
-from ddtrace import tracer
-import redis as redis_lib
-
-from config import REDIS_HOST, REDIS_PORT
-
-bp = Blueprint("sessions", __name__)
-
-_redis = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-
-
-@bp.route("/sessions", methods=["GET"])
-def list_sessions():
-    with tracer.trace("redis.scan", service="acme-order-service", resource="sessions") as span:
-        # Use SCAN instead of KEYS — non-blocking, cursor-based iteration
-        keys = list(_redis.scan_iter("session:*", count=100))
-        span.set_tag("redis.command", "SCAN session:*")
-        span.set_tag("redis.key_count", len(keys))
-
-    sessions = []
-    for key in keys[:100]:  # cap response size
-        data = _redis.get(key)
-        if data:
-            sessions.append({"key": key, "data": data})
-
-    return jsonify({"count": len(sessions), "sessions": sessions})
-PYEOF
-
-  git add routes/sessions.py
-  git commit -m "fix: replace redis.keys() with scan_iter() in /sessions
-
-redis.keys() is O(N) and blocks the single-threaded Redis server,
-causing latency spikes across all services sharing the Redis instance.
-Replaced with scan_iter() which uses cursor-based iteration."
-
-  git push -u origin "$branch"
-
-  gh pr create \
-    --repo "$REPO" \
-    --base main \
-    --head "$branch" \
-    --title "Fix Redis KEYS blocking in /sessions endpoint" \
-    --body "$(cat <<'EOF'
-## Summary
-- Datadog APM traces for `/sessions` showed a `redis.keys` span dominating the trace at 200ms+
-- Under load, this caused latency spikes across ALL endpoints sharing the Redis instance
-- Root cause: `redis.keys("session:*")` is O(N) and blocks the single-threaded Redis server for the entire scan
-- Fix: Replaced with `scan_iter()` which uses cursor-based, non-blocking iteration
-
-## Datadog evidence
-- Service: `acme-order-service`, env: `demo`
-- APM Traces → resource `/sessions` → flame graph shows fat `redis.keys` span
-- Redis metrics showed command latency spikes correlated with `/sessions` traffic
-
-## Test plan
-- [ ] Hit `/sessions` — should return same data
-- [ ] Verify Datadog traces show `redis.command=SCAN session:*` instead of `KEYS`
-- [ ] Under load, Redis latency should not spike
-EOF
-)"
-
-  git checkout main
-  ok "Bugfix PR created for example 2"
-}
-
-bugfix_3() {
-  # Example 3: Fix missing timeout on requests.post()
-  local branch="${BUGFIX_BRANCHES[3]}"
   info "Creating bugfix PR: Add HTTP timeout to /checkout..."
 
   create_branch_from_main "$branch"
@@ -178,11 +135,14 @@ bugfix_3() {
   sed -i '' 's|resp = http_requests.post(FRAUD_API_URL, json=order)$|resp = http_requests.post(FRAUD_API_URL, json=order, timeout=5)|' routes/checkout.py
 
   git add routes/checkout.py
-  git commit -m "fix: add 5s timeout to fraud API call in /checkout
+  git commit -m "$(cat <<'EOF'
+fix: add 5s timeout to fraud API call in /checkout
 
 requests.post() to the fraud-check API had no timeout parameter.
 When the fraud API hangs, all gunicorn workers block indefinitely,
-causing 504 errors across all endpoints."
+causing 504 errors across all endpoints.
+EOF
+)"
 
   git push -u origin "$branch"
 
@@ -210,15 +170,15 @@ EOF
 )"
 
   git checkout main
-  ok "Bugfix PR created for example 3"
+  ok "Bugfix PR created for example 2"
 }
 
 # ─── Repeat PRs (same mistake, different code) ───────────────────────────────
 
 repeat_1() {
-  # Example 1: New endpoint that hardcodes gpt-5-mini
+  # Example 1: New endpoint that passes temperature to gpt-5
   local branch="${REPEAT_BRANCHES[1]}"
-  info "Creating repeat PR: New /generate-description endpoint using gpt-5-mini..."
+  info "Creating repeat PR: New /generate-description endpoint passing temperature to gpt-5..."
 
   create_branch_from_main "$branch"
 
@@ -246,11 +206,11 @@ def generate_description():
     prompt = f"Write a {tone} marketing description for: {product}"
 
     with tracer.trace("llm.complete", service="acme-order-service", resource="generate_description") as span:
-        span.set_tag("llm.model", "gpt-5-mini")
+        span.set_tag("llm.model", "gpt-5")
         span.set_tag("llm.prompt_length", len(prompt))
 
-        # Use gpt-5-mini for faster, cheaper completions
-        result = complete(model="gpt-5-mini", prompt=prompt, temperature=0.1)
+        # Use low temperature for consistent, high-quality output
+        result = complete(model="gpt-5", prompt=prompt, temperature=0.1)
 
         span.set_tag("llm.response_length", len(result["choices"][0]["text"]))
 
@@ -271,11 +231,14 @@ PYEOF
 ' app.py
 
   git add routes/generate_description.py app.py
-  git commit -m "feat: add /generate-description endpoint for product marketing copy
+  git commit -m "$(cat <<'EOF'
+feat: add /generate-description endpoint for product marketing copy
 
 New endpoint that generates product descriptions using the LLM.
 Supports configurable tone (professional, casual, etc.) and uses
-low temperature for consistent output."
+low temperature for consistent output.
+EOF
+)"
 
   git push -u origin "$branch"
 
@@ -309,91 +272,8 @@ EOF
 }
 
 repeat_2() {
-  # Example 2: New endpoint that uses redis.keys()
+  # Example 2: New endpoint with requests.post() and no timeout
   local branch="${REPEAT_BRANCHES[2]}"
-  info "Creating repeat PR: New /active-carts endpoint using redis.keys()..."
-
-  create_branch_from_main "$branch"
-
-  # Create new route file
-  cat > routes/active_carts.py <<'PYEOF'
-"""Active shopping carts endpoint (/active-carts)
-
-Returns a summary of all active shopping carts stored in Redis.
-"""
-
-from flask import Blueprint, jsonify
-from ddtrace import tracer
-import redis as redis_lib
-
-from config import REDIS_HOST, REDIS_PORT
-
-bp = Blueprint("active_carts", __name__)
-
-_redis = redis_lib.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-
-
-@bp.route("/active-carts", methods=["GET"])
-def active_carts():
-    with tracer.trace("redis.query", service="acme-order-service", resource="active_carts") as span:
-        keys = _redis.keys("cart:*")
-        span.set_tag("redis.command", "KEYS cart:*")
-        span.set_tag("redis.key_count", len(keys))
-
-    carts = []
-    for key in keys[:50]:
-        data = _redis.get(key)
-        if data:
-            carts.append({"key": key, "data": data})
-
-    return jsonify({"count": len(carts), "carts": carts})
-PYEOF
-
-  # Register blueprint in app.py
-  sed -i '' '/from routes.notify import bp as notify_bp/a\
-    from routes.active_carts import bp as active_carts_bp
-' app.py
-  sed -i '' '/app.register_blueprint(notify_bp)/a\
-    app.register_blueprint(active_carts_bp)
-' app.py
-
-  git add routes/active_carts.py app.py
-  git commit -m "feat: add /active-carts endpoint for shopping cart overview
-
-New endpoint that lists all active shopping carts from Redis.
-Useful for the admin dashboard to see current shopping activity."
-
-  git push -u origin "$branch"
-
-  gh pr create \
-    --repo "$REPO" \
-    --base main \
-    --head "$branch" \
-    --title "Add /active-carts endpoint for admin dashboard" \
-    --body "$(cat <<'EOF'
-## Summary
-- New `GET /active-carts` endpoint that lists active shopping carts from Redis
-- Returns cart keys and data, capped at 50 results
-- Includes Datadog APM instrumentation
-
-## Usage
-```bash
-curl http://localhost:9000/active-carts
-```
-
-## Test plan
-- [ ] Verify endpoint returns cart data from Redis
-- [ ] Check Datadog traces show redis span with correct tags
-EOF
-)"
-
-  git checkout main
-  ok "Repeat PR created for example 2"
-}
-
-repeat_3() {
-  # Example 3: New endpoint with requests.post() and no timeout
-  local branch="${REPEAT_BRANCHES[3]}"
   info "Creating repeat PR: New /refund endpoint without HTTP timeout..."
 
   create_branch_from_main "$branch"
@@ -455,10 +335,13 @@ PYEOF
 ' app.py
 
   git add routes/refund.py app.py
-  git commit -m "feat: add /refund endpoint for processing customer refunds
+  git commit -m "$(cat <<'EOF'
+feat: add /refund endpoint for processing customer refunds
 
 New endpoint that processes refund requests by validating them
-through the fraud/risk API before approving."
+through the fraud/risk API before approving.
+EOF
+)"
 
   git push -u origin "$branch"
 
@@ -488,7 +371,7 @@ EOF
 )"
 
   git checkout main
-  ok "Repeat PR created for example 3"
+  ok "Repeat PR created for example 2"
 }
 
 # ─── Reset ────────────────────────────────────────────────────────────────────
@@ -544,9 +427,8 @@ list_examples() {
   echo ""
   echo "Available examples:"
   echo ""
-  echo "  1  LLM model gotcha     gpt-5-mini silently ignores temperature"
-  echo "  2  Redis KEYS blocking   redis.keys() is O(N), blocks server"
-  echo "  3  HTTP call no timeout  requests.post() without timeout hangs"
+  echo "  1  GPT-5 temperature error   gpt-5 doesn't support temperature — causes ValueError"
+  echo "  2  HTTP call no timeout      requests.post() without timeout hangs workers"
   echo ""
   echo "Usage:"
   echo "  ./scripts/demo.sh bugfix <N>   Create the bug-fix PR"
@@ -564,12 +446,12 @@ num="${2:-0}"
 
 case "$cmd" in
   bugfix)
-    [[ "$num" -ge 1 && "$num" -le 3 ]] || fail "Usage: $0 bugfix <1|2|3>"
+    [[ "$num" -ge 1 && "$num" -le 2 ]] || fail "Usage: $0 bugfix <1|2>"
     ensure_clean
     "bugfix_${num}"
     ;;
   repeat)
-    [[ "$num" -ge 1 && "$num" -le 3 ]] || fail "Usage: $0 repeat <1|2|3>"
+    [[ "$num" -ge 1 && "$num" -le 2 ]] || fail "Usage: $0 repeat <1|2>"
     ensure_clean
     "repeat_${num}"
     ;;
