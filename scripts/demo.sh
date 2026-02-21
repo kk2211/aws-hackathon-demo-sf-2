@@ -48,7 +48,7 @@ bugfix_1() {
 
   create_branch_from_main "$branch"
 
-  # Fix recommend.py: remove temperature from the complete() call
+  # Fix recommend.py: remove temperature from the LLM API call
   cat > routes/recommend.py <<'PYEOF'
 """Product recommendation endpoint (/recommend)
 
@@ -57,9 +57,9 @@ Uses the configured LLM model to generate personalized product recommendations.
 
 from flask import Blueprint, request, jsonify
 from ddtrace import tracer
+import requests as http_requests
 
-from services.mock_llm import complete
-from config import LLM_MODEL
+from config import LLM_MODEL, LLM_API_URL
 
 bp = Blueprint("recommend", __name__)
 
@@ -73,8 +73,18 @@ def recommend():
         span.set_tag("llm.model", LLM_MODEL)
 
         # gpt-5 does not support the temperature parameter — omit it
-        result = complete(model=LLM_MODEL, prompt=prompt)
+        resp = http_requests.post(LLM_API_URL, json={
+            "model": LLM_MODEL,
+            "prompt": prompt,
+        })
 
+        if resp.status_code != 200:
+            error_detail = resp.json().get("error", {}).get("message", "LLM API error")
+            span.set_tag("error", True)
+            span.set_tag("error.message", error_detail)
+            return jsonify({"error": error_detail}), resp.status_code
+
+        result = resp.json()
         span.set_tag("llm.response_text", result["choices"][0]["text"])
 
     return jsonify(result)
@@ -191,8 +201,9 @@ Uses the LLM to generate marketing descriptions for products.
 
 from flask import Blueprint, request, jsonify
 from ddtrace import tracer
+import requests as http_requests
 
-from services.mock_llm import complete
+from config import LLM_API_URL
 
 bp = Blueprint("generate_description", __name__)
 
@@ -210,8 +221,19 @@ def generate_description():
         span.set_tag("llm.prompt_length", len(prompt))
 
         # Use low temperature for consistent, high-quality output
-        result = complete(model="gpt-5", prompt=prompt, temperature=0.1)
+        resp = http_requests.post(LLM_API_URL, json={
+            "model": "gpt-5",
+            "prompt": prompt,
+            "temperature": 0.1,
+        })
 
+        if resp.status_code != 200:
+            error_detail = resp.json().get("error", {}).get("message", "LLM API error")
+            span.set_tag("error", True)
+            span.set_tag("error.message", error_detail)
+            return jsonify({"error": error_detail}), resp.status_code
+
+        result = resp.json()
         span.set_tag("llm.response_length", len(result["choices"][0]["text"]))
 
     return jsonify({

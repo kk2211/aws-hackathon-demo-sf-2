@@ -12,6 +12,7 @@ services:
       - REDIS_HOST=redis
       - FRAUD_API_URL=http://app:5000/_mock/fraud
       - EMAIL_API_URL=http://app:5000/_mock/email
+      - LLM_API_URL=http://app:5000/_mock/llm
     depends_on:
       - redis
       - datadog-agent

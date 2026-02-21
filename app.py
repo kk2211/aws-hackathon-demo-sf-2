@@ -9,6 +9,7 @@ from flask import Flask, jsonify, request
 from config import DB_PATH
 from services.mock_fraud import check_fraud
 from services.mock_email import send_email
+from services.mock_llm import complete as llm_complete
 
 
 def seed_database():
@@ -97,6 +98,19 @@ def create_app():
         order = request.get_json(force=True)
         result = check_fraud(order)
         return jsonify(result)
+
+    @app.route("/_mock/llm", methods=["POST"])
+    def mock_llm_endpoint():
+        data = request.get_json(force=True)
+        try:
+            result = llm_complete(
+                model=data.get("model", "gpt-5"),
+                prompt=data.get("prompt", ""),
+                temperature=data.get("temperature", 1.0),
+            )
+            return jsonify(result)
+        except (ValueError, RuntimeError) as exc:
+            return jsonify({"error": {"message": str(exc), "type": "invalid_request_error"}}), 400
 
     @app.route("/_mock/email", methods=["POST"])
     def mock_email_endpoint():

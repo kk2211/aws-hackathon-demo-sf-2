@@ -5,9 +5,9 @@ Uses the configured LLM model to generate personalized product recommendations.
 
 from flask import Blueprint, request, jsonify
 from ddtrace import tracer
+import requests as http_requests
 
-from services.mock_llm import complete
-from config import LLM_MODEL
+from config import LLM_MODEL, LLM_API_URL
 
 bp = Blueprint("recommend", __name__)
 
@@ -22,9 +22,19 @@ def recommend():
         span.set_tag("llm.model", LLM_MODEL)
         span.set_tag("llm.temperature_requested", temperature)
 
-        # BUG: gpt-5 does not support the temperature parameter — this will error
-        result = complete(model=LLM_MODEL, prompt=prompt, temperature=temperature)
+        resp = http_requests.post(LLM_API_URL, json={
+            "model": LLM_MODEL,
+            "prompt": prompt,
+            "temperature": temperature,
+        })
 
+        if resp.status_code != 200:
+            error_detail = resp.json().get("error", {}).get("message", "LLM API error")
+            span.set_tag("error", True)
+            span.set_tag("error.message", error_detail)
+            return jsonify({"error": error_detail}), resp.status_code
+
+        result = resp.json()
         span.set_tag("llm.response_text", result["choices"][0]["text"])
 
     return jsonify(result)
