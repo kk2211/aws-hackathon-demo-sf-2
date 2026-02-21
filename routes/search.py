@@ -30,7 +30,8 @@ def search():
 
         db = _get_db()
         cursor = db.execute(
-            "SELECT * FROM products WHERE name LIKE ?", (f"%{q}%",)
+            "SELECT * FROM products WHERE LOWER(name) LIKE LOWER(?) OR LOWER(category) LIKE LOWER(?) OR LOWER(description) LIKE LOWER(?)",
+            (f"%{q}%", f"%{q}%", f"%{q}%"),
         )
         rows = [dict(row) for row in cursor.fetchall()]
         db.close()
