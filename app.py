@@ -84,12 +84,14 @@ def create_app():
     from routes.checkout import bp as checkout_bp
     from routes.search import bp as search_bp
     from routes.notify import bp as notify_bp
+    from routes.generate_description import bp as generate_description_bp
 
     app.register_blueprint(recommend_bp)
     app.register_blueprint(sessions_bp)
     app.register_blueprint(checkout_bp)
     app.register_blueprint(search_bp)
     app.register_blueprint(notify_bp)
+    app.register_blueprint(generate_description_bp)
 
     # --- Internal mock endpoints (called by routes via HTTP) ---
 
