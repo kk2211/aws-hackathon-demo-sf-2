@@ -27,7 +27,8 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          direct_prompt: |
+          trigger_phrase: ""
+          prompt: |
             Review this PR. Focus on:
             1. Bugs and correctness issues
             2. Performance concerns (missing timeouts, blocking calls, unbounded queries)
